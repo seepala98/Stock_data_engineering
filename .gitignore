@@ -1,0 +1,26 @@
+# Airflow files
+__pycache__/
+airflow/
+*.pyc
+*.log
+*.pid
+webserver_config.py
+.env
+
+# Ignore DAG files in development environment
+dags/*.pyc
+dags/__pycache__/
+!dags/__init__.py
+dags/*.ipynb_checkpoints/
+
+# Ignore DAG files in production environment
+# dags/
+
+# Ignore SQLite database used by default by Airflow
+airflow.db
+
+# Ignore Celerybeat-schedule file used by Celery Executor
+celerybeat-schedule
+
+# Ignore result backend used by Celery Executor
+celery-results/
