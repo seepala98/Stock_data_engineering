@@ -24,3 +24,6 @@ celerybeat-schedule
 
 # Ignore result backend used by Celery Executor
 celery-results/
+
+# ignore data folder 
+data/

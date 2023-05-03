@@ -145,7 +145,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import joblib
 
-def train_model(name):
+def train_model():
     # Load data
     stocks_data = pd.concat([pd.read_csv(os.path.join('/data/processed/stocks', f)) for f in os.listdir('/data/processed/stocks') if f.endswith('.csv')])
     etfs_data = pd.concat([pd.read_csv(os.path.join('/data/processed/etfs', f)) for f in os.listdir('/data/processed/etfs') if f.endswith('.csv')])
@@ -208,14 +208,14 @@ with DAG('stock_dataengineering', schedule_interval='@daily', default_args=defau
     transform_data_task_stocks = PythonOperator(
         task_id='transform_data_stocks',
         python_callable=feature_engineering,
-        op_kwargs=['stocks'],
+        op_args=['stocks'],
         dag=dag
     )
 
     transform_data_task_etfs = PythonOperator(
         task_id='transform_data_etfs',
         python_callable=feature_engineering,
-        op_kwargs=['etfs'],
+        op_args=['etfs'],
         dag=dag
     )
 
@@ -225,4 +225,4 @@ with DAG('stock_dataengineering', schedule_interval='@daily', default_args=defau
         dag=dag
     )
 
-    tmp_data >> download_data_task >> [ transform_data_task_etfs, transform_data_task_stocks ] >> ml_task
+    tmp_data >> download_data_task >> [ transform_data_task_etfs, transform_data_task_stocks ] # >> ml_task
