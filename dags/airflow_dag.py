@@ -7,7 +7,7 @@ import pyarrow.parquet as pq
 import zipfile
 # from kaggle.api.kaggle_api_extended import KaggleApi
 import os 
-import opendatasets as od 
+# import opendatasets as od 
 import numpy as np
 
 from airflow.models import DAG
@@ -16,6 +16,7 @@ from airflow.hooks.base import BaseHook
 from airflow.operators.python import PythonOperator, BranchPythonOperator
 from airflow.utils.task_group import TaskGroup
 from airflow.operators.bash import BashOperator
+from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
 
 default_args = {
@@ -28,7 +29,7 @@ default_args = {
 dag_path =os.getcwd()
 
 variable_data = {
-	"weather_data_tmp_directory":"/opt/airflow/data/",
+	"weather_data_tmp_directory":"/opt/airflow/spark/spark/resources/data/",
 	"weather_data_spark_code":"/opt/airflow/spark/spark_weather_data.py",
 	"spark_dir":"/opt/airflow/spark/"
 }
@@ -54,48 +55,48 @@ def download_data():
     os.environ['KAGGLE_USERNAME'] = 'vardhan13'
     os.environ['KAGGLE_KEY'] = 'd295b2c75c11ba3154162ec543e91d54'
     print(os.getcwd())
-    os.system('kaggle datasets download -d jacksoncrow/stock-market-dataset -p ./data')
-    with zipfile.ZipFile('./data/stock-market-dataset.zip', 'r') as zip_ref:
-        zip_ref.extractall('./data/')
+    os.system('kaggle datasets download -d jacksoncrow/stock-market-dataset -p ./spark/spark/resources/data/')
+    with zipfile.ZipFile('./spark/spark/resources/data/stock-market-dataset.zip', 'r') as zip_ref:
+        zip_ref.extractall('./spark/spark/resources/data/')
 
-def feature_engineering(category):
-    input_folder = f'./data/{category}/'
-    output_folder = f'./data/processed/{category}/'
-    symbol_dict = pd.read_csv('./data/symbols_valid_meta.csv').set_index('Symbol')['Security Name'].to_dict()
+# def feature_engineering(category):
+#     input_folder = f'./data/{category}/'
+#     output_folder = f'./data/processed/{category}/'
+#     symbol_dict = pd.read_csv('./data/symbols_valid_meta.csv').set_index('Symbol')['Security Name'].to_dict()
 
-    for file in os.listdir(input_folder):
-        if file.endswith(".csv"):
-            # Read CSV file and extract symbol from the file name
-            df = pd.read_csv(os.path.join(input_folder, file))
-            symbol = file.split('.')[0]
+#     for file in os.listdir(input_folder):
+#         if file.endswith(".csv"):
+#             # Read CSV file and extract symbol from the file name
+#             df = pd.read_csv(os.path.join(input_folder, file))
+#             symbol = file.split('.')[0]
 
-            # Add columns for Symbol and Security Name
-            df['Symbol'] = symbol
-            df['Security_Name'] = symbol_dict.get(symbol, 'Unknown')
+#             # Add columns for Symbol and Security Name
+#             df['Symbol'] = symbol
+#             df['Security_Name'] = symbol_dict.get(symbol, 'Unknown')
 
-            # Calculate the rolling average and median
-            df['vol_moving_avg'] = df['Volume'].rolling(30, 1).mean()
-            df['adj_close_rolling_med'] = df['Adj Close'].rolling(30, 1).median()
+#             # Calculate the rolling average and median
+#             df['vol_moving_avg'] = df['Volume'].rolling(30, 1).mean()
+#             df['adj_close_rolling_med'] = df['Adj Close'].rolling(30, 1).median()
 
-            # Write output to a separate CSV file for each stock/ETF
-            output_file = os.path.join(output_folder, f"{symbol}.csv")
-            df.to_csv(output_file, index=False)
+#             # Write output to a separate CSV file for each stock/ETF
+#             output_file = os.path.join(output_folder, f"{symbol}.csv")
+#             df.to_csv(output_file, index=False)
 
 # from pyspark.sql.functions import * # col, avg, sum, median, input_file_name, regexp_extract, expr
 # from pyspark.sql.window import Window
 # from pyspark.sql import SparkSession
 # from pyspark.sql.types import StructType, StructField, StringType, FloatType, IntegerType
 
-# def transform_data():
+# def transform_data(category):
 
-#     input_path = "./data"
-#     output_path = "./data/processed"
+#     input_path = "./data/{category}/"
+#     output_path = "./data/processed/{category}/"
 
 #     spark = SparkSession.builder\
 #         .appName('stock_Dataengineering') \
-#         .getOrCreate()
-#                 # .master('local[*]') \
-#         # .config("spark.driver.memory", "8g") \
+#         .getOrCreate() \
+#         .master('local[*]') \
+#         .config("spark.driver.memory", "8g") \
     
 #     # Define the schema for the CSV files
 #     schema = StructType([
@@ -138,58 +139,60 @@ def feature_engineering(category):
 #     df_etfs.write.mode("overwrite").parquet(f"{output_path}/etfs")
 #     df_stocks.write.mode("overwrite").parquet(f"{output_path}/stocks")
 #     spark.stop()
-import os
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-import joblib
 
-def train_model():
-    # Load data
-    stocks_data = pd.concat([pd.read_csv(os.path.join('/data/processed/stocks', f)) for f in os.listdir('/data/processed/stocks') if f.endswith('.csv')])
-    etfs_data = pd.concat([pd.read_csv(os.path.join('/data/processed/etfs', f)) for f in os.listdir('/data/processed/etfs') if f.endswith('.csv')])
-    data = pd.concat([stocks_data, etfs_data])
 
-    # Convert date column to datetime and set it as index
-    data['Date'] = pd.to_datetime(data['Date'])
-    data.set_index('Date', inplace=True)
+# import os
+# import pandas as pd
+# from sklearn.model_selection import train_test_split
+# from sklearn.ensemble import RandomForestRegressor
+# from sklearn.metrics import mean_absolute_error, mean_squared_error
+# import joblib
 
-    # Remove rows with NaN values
-    data.dropna(inplace=True)
+# def train_model():
+#     # Load data
+#     stocks_data = pd.concat([pd.read_csv(os.path.join('./data/processed/stocks/', f)) for f in os.listdir('./data/processed/stocks/') if f.endswith('.csv')])
+#     etfs_data = pd.concat([pd.read_csv(os.path.join('./data/processed/etfs/', f)) for f in os.listdir('./data/processed/etfs/') if f.endswith('.csv')])
+#     data = pd.concat([stocks_data, etfs_data])
 
-    # Select features and target
-    features = ['vol_moving_avg', 'adj_close_rolling_med']
-    target = 'Volume'
+#     # Convert date column to datetime and set it as index
+#     data['Date'] = pd.to_datetime(data['Date'])
+#     data.set_index('Date', inplace=True)
 
-    X = data[features]
-    y = data[target]
+#     # Remove rows with NaN values
+#     data.dropna(inplace=True)
 
-    # Split data into train and test sets
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+#     # Select features and target
+#     features = ['vol_moving_avg', 'adj_close_rolling_med']
+#     target = 'Volume'
 
-    # Create a RandomForestRegressor model
-    model = RandomForestRegressor(n_estimators=100, random_state=42)
+#     X = data[features]
+#     y = data[target]
 
-    # Train the model
-    model.fit(X_train, y_train)
+#     # Split data into train and test sets
+#     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Make predictions on test data
-    y_pred = model.predict(X_test)
+#     # Create a RandomForestRegressor model
+#     model = RandomForestRegressor(n_estimators=100, random_state=42)
 
-    # Calculate the Mean Absolute Error and Mean Squared Error
-    mae = mean_absolute_error(y_test, y_pred)
-    mse = mean_squared_error(y_test, y_pred)
+#     # Train the model
+#     model.fit(X_train, y_train)
 
-    # Persist the model to disk
-    model_path = f'/data/models/{name}_model.pkl'
-    joblib.dump(model, model_path)
+#     # Make predictions on test data
+#     y_pred = model.predict(X_test)
 
-    # Persist training metrics to a log file
-    log_path = f'/data/logs/{name}_model.log'
-    with open(log_path, 'w') as f:
-        f.write(f'Mean Absolute Error: {mae}\n')
-        f.write(f'Mean Squared Error: {mse}\n')
+#     # Calculate the Mean Absolute Error and Mean Squared Error
+#     mae = mean_absolute_error(y_test, y_pred)
+#     mse = mean_squared_error(y_test, y_pred)
+
+#     # Persist the model to disk
+#     model_path = f'./data/models/{name}_model.pkl'
+#     joblib.dump(model, model_path)
+
+#     # Persist training metrics to a log file
+#     log_path = f'./data/logs/{name}_model.log'
+#     with open(log_path, 'w') as f:
+#         f.write(f'Mean Absolute Error: {mae}\n')
+#         f.write(f'Mean Squared Error: {mse}\n')
 
 
 with DAG('stock_dataengineering', schedule_interval='@daily', default_args=default_args, catchup=False) as dag:
@@ -205,24 +208,49 @@ with DAG('stock_dataengineering', schedule_interval='@daily', default_args=defau
         dag=dag
     )
 
-    transform_data_task_stocks = PythonOperator(
-        task_id='transform_data_stocks',
-        python_callable=feature_engineering,
-        op_args=['stocks'],
+    transform_data_task_stocks = SparkSubmitOperator(
+        task_id='transform_data_stock',
+        application='spark/app/spark_jobs.py',
+        name='transform_data',
+        conn_id='spark_default',  # your Spark connection id defined in Airflow
+        # executor_memory='8g',
+        # executor_cores=4,
+        # num_executors=10,
+        verbose=True,
         dag=dag
     )
 
-    transform_data_task_etfs = PythonOperator(
-        task_id='transform_data_etfs',
-        python_callable=feature_engineering,
-        op_args=['etfs'],
-        dag=dag
-    )
+    # transform_data_task_etfs = SparkSubmitOperator(
+    #     task_id='transform_data_etfs',
+    #     application='spark/spark_jobs.py',
+    #     name='transform_data',
+    #     conn_id='spark_default',  # your Spark connection id defined in Airflow
+    #     conf={'category': 'etfs'},  # any additional configurations you want to pass to your Spark script
+    #     executor_memory='8g',
+    #     executor_cores=4,
+    #     num_executors=10,
+    #     verbose=False,
+    #     dag=dag
+    # )
 
-    ml_task = PythonOperator(
-        task_id='train_ml',
-        python_callable=train_model,
-        dag=dag
-    )
+    # transform_data_task_stocks = PythonOperator(
+    #     task_id='transform_data_stocks',
+    #     python_callable=feature_engineering,
+    #     op_args=['stocks'],
+    #     dag=dag
+    # )
 
-    tmp_data >> download_data_task >> [ transform_data_task_etfs, transform_data_task_stocks ] # >> ml_task
+    # transform_data_task_etfs = PythonOperator(
+    #     task_id='transform_data_etfs',
+    #     python_callable=feature_engineering,
+    #     op_args=['etfs'],
+    #     dag=dag
+    # )
+
+    # ml_task = PythonOperator(
+    #     task_id='train_ml',
+    #     python_callable=train_model,
+    #     dag=dag
+    # )
+
+    tmp_data >> download_data_task >> transform_data_task_stocks  

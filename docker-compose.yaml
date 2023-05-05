@@ -51,7 +51,11 @@ x-airflow-common:
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
   # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.6.0}
-  build: .
+  build: 
+    context: .
+    dockerfile: Dockerfile
+  networks:
+    - default_net
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -63,7 +67,7 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth, airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
@@ -71,15 +75,16 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- geopy apache-airflow[postgres] pyspark apache-airflow  pandas pyarrow  zipfile36 opendatasets apache-airflow-providers-apache-spark }
+    # _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- geopy apache-airflow[postgres] pyspark apache-airflow  pandas pyarrow  zipfile36 opendatasets apache-airflow-providers-apache-spark }
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-} 
   volumes:
-    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
-    - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
-    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
-    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    # - ${AIRFLOW_PROJ_DIR:-.}/spark:/opt/airflow/spark
-    # - ${AIRFLOW_PROJ_DIR:-.}/variables:/opt/airflow/variables
-    # - ${AIRFLOW_PROJ_DIR:-.}/jars:/opt/airflow/jars
+    - ./dags:/opt/airflow/dags
+    - ./data:/opt/airflow/data
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./spark:/opt/airflow/spark
+    - ./spark/app:/opt/airflow/spark/app # Spark scripts folder (Must be the same path in airflow and Spark Cluster)
+    - ./spark/resources:/opt/airflow/spark/resources #Resources folder (Must be the same path in airflow and Spark Cluster)
   user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-50000}"
   depends_on:
     &airflow-common-depends-on
@@ -97,6 +102,8 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
+    networks:
+    - default_net
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
@@ -115,6 +122,8 @@ services:
       retries: 50
       start_period: 30s
     restart: always
+    networks:
+    - default_net
 
   airflow-webserver:
     <<: *airflow-common
@@ -128,6 +137,8 @@ services:
       retries: 5
       start_period: 30s
     restart: always
+    networks:
+    - default_net
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -143,6 +154,8 @@ services:
       retries: 5
       start_period: 30s
     restart: always
+    networks:
+    - default_net
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -165,6 +178,8 @@ services:
       # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
       DUMB_INIT_SETSID: "0"
     restart: always
+    networks:
+    - default_net
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -180,6 +195,8 @@ services:
       retries: 5
       start_period: 30s
     restart: always
+    networks:
+    - default_net
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -260,43 +277,101 @@ services:
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
+    networks:
+    - default_net
     volumes:
       - ${AIRFLOW_PROJ_DIR:-.}:/sources
 
-  # airflow-cli:
-  #   <<: *airflow-common
-  #   profiles:
-  #     - debug
+  spark-master:
+    image: bitnami/spark:3.2.0
+    user: root
+    networks:
+    - default_net
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    # command: /opt/bitnami/spark/sbin/start-all.sh
+    volumes:
+      - ./spark:/opt/airflow/spark
+      - ./spark/app:/opt/airflow/spark/app # Spark scripts folder (Must be the same path in airflow and Spark Cluster)
+      - ./spark/resources:/opt/airflow/spark/resources #Resources folder (Must be the same path in airflow and Spark Cluster)
+    ports:
+      - '4141:4040'
+      - '7077:7077'
+      - '8181:8080'
+
+  spark-worker:
+    image: bitnami/spark:3.2.0
+    networks:
+    - default_net
+    command: /opt/bitnami/spark/sbin/start-worker.sh spark://spark-master:7077
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=16g
+      - SPARK_WORKER_CORES=16
+      - SPARK_EXECUTOR_MEMORY=16g
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    volumes:
+      - ./spark:/opt/airflow/spark
+      - ./spark/app:/opt/airflow/spark/app 
+      - ./spark/resources:/opt/airflow/spark/resources 
+    depends_on:
+      - spark-master
+
+  # spark:
+  #   image: bitnami/spark:3.3.0
+  #   user: root # Run container as root container: https://docs.bitnami.com/tutorials/work-with-non-root-containers/
+  #   hostname: spark
   #   environment:
-  #     <<: *airflow-common-env
-  #     CONNECTION_CHECK_MAX_COUNT: "0"
-  #   # Workaround for entrypoint issue. See: https://github.com/apache/airflow/issues/16252
-  #   command:
-  #     - bash
-  #     - -c
-  #     - airflow
-
-  # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
-  # or by explicitly targeted on the command line e.g. docker-compose up flower.
-  # See: https://docs.docker.com/compose/profiles/
-  # flower:
-  #   <<: *airflow-common
-  #   command: celery flower
-  #   profiles:
-  #     - flower
+  #     - SPARK_MODE=master
+  #     - SPARK_RPC_AUTHENTICATION_ENABLED=no
+  #     - SPARK_RPC_ENCRYPTION_ENABLED=no
+  #     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+  #     - SPARK_SSL_ENABLED=no
+  #   volumes:
+  #     - ./spark:/opt/airflow/spark
+  #     - ./spark/app:/opt/airflow/spark/app # Spark scripts folder (Must be the same path in airflow and Spark Cluster)
+  #     - ./spark/resources:/opt/airflow/spark/resources #Resources folder (Must be the same path in airflow and Spark Cluster)
   #   ports:
-  #     - "5555:5555"
-  #   healthcheck:
-  #     test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 30s
-  #   restart: always
-  #   depends_on:
-  #     <<: *airflow-common-depends-on
-  #     airflow-init:
-  #       condition: service_completed_successfully
+  #     - "8181:8080"
+  #     - "7077:7077"
 
+  # spark-worker-1:
+  #   image: bitnami/spark
+  #   user: root
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_MASTER_URL=spark://spark:7077
+  #     - SPARK_WORKER_MEMORY=200G
+  #     - SPARK_WORKER_CORES=100
+  #     - SPARK_RPC_AUTHENTICATION_ENABLED=no
+  #     - SPARK_RPC_ENCRYPTION_ENABLED=no
+  #     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+  #     - SPARK_SSL_ENABLED=no
+  #   volumes:
+  #     - ./spark:/opt/airflow/spark
+  #     - ./spark/app:/opt/airflow/spark/app 
+  #     - ./spark/resources:/opt/airflow/spark/resources 
+
+  #Jupyter notebook
+  jupyter-spark:
+    image: jupyter/pyspark-notebook:spark-3.3.0
+    ports:
+      - "8888:8888"
+      - "4040-4080:4040-4080"
+    volumes:
+      - ./notebooks:/home/jovyan/work/notebooks/
+      - ./spark/resources/data:/home/jovyan/work/data/
+      - ./spark/resources/jars:/home/jovyan/work/jars/
 volumes:
   postgres-db-volume:
+
+networks:
+  default_net:

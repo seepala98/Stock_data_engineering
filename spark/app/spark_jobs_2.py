@@ -5,13 +5,12 @@ from pyspark.sql.types import StructType, StructField, StringType, FloatType, In
 
 def transform_data():
 
-    input_path = "./data"
-    output_path = "./data/processed"
+    input_path = "./spark/spark/resources/data"
+    output_path = "./spark/spark/resources/data/processed"
 
     spark = SparkSession.builder\
         .appName('stock_Dataengineering') \
-        .getOrCreate()
-                # .master('local[*]') \
+        .getOrCreate() \
         # .config("spark.driver.memory", "8g") \
     
     # Define the schema for the CSV files
@@ -55,3 +54,6 @@ def transform_data():
     df_etfs.write.mode("overwrite").parquet(f"{output_path}/etfs")
     df_stocks.write.mode("overwrite").parquet(f"{output_path}/stocks")
     spark.stop()
+
+if __name__ == "__main__":
+    transform_data()

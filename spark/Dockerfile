@@ -1,11 +1,16 @@
-FROM bitnami/spark:3
+FROM openjdk:11-jre-slim
 
-USER root
-RUN curl https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.231/aws-java-sdk-bundle-1.12.231.jar --output /opt/bitnami/spark/jars/aws-java-sdk-bundle-1.12.231.jar
-RUN curl https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.1/hadoop-aws-3.3.1.jar --output /opt/bitnami/spark/jars/hadoop-aws-3.3.1.jar
-RUN curl https://repo1.maven.org/maven2/net/java/dev/jets3t/jets3t/0.9.4/jets3t-0.9.4.jar --output /opt/bitnami/spark/jars/jets3t-0.9.4.jar
+ARG SPARK_VERSION=3.2.0
+ARG HADOOP_VERSION=3.2
+ENV SPARK_HOME=/usr/local/spark
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
 
-COPY ./dags/spark_etl_script_docker.py /opt/bitnami/spark
+# Download and install Spark
+RUN curl -sL --retry 3 "https://apache.osuosl.org/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" \
+    | tar -xz -C /usr/local/ \
+    && ln -s /usr/local/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} $SPARK_HOME \
+    && rm -rf /var/cache/apk/*
 
-COPY ./requirements.txt /
-RUN pip install -r /requirements.txt
+WORKDIR $SPARK_HOME
+
+CMD ["bin/spark-class", "org.apache.spark.deploy.master.Master"]
