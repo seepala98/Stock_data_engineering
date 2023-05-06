@@ -18,6 +18,8 @@ To provide more context and clarity, including pipeline specs and diagrams can b
 
 * steps 3 and 4 could be run in parallel in my case the resources werent enough to do so. Hence ran them as sequential tasks. 
 
+<img src="dag.png" alt="drawing" width="400"/>
+
 ## Problem 1: Raw Data Processing
 1. Download the data using kaggle api end points to store and extract the contents.
 2. Store the data at certain location for further data cleaning and processing.
@@ -40,6 +42,7 @@ To provide more context and clarity, including pipeline specs and diagrams can b
 2. Create an API endpoint to serve the model. 
 3. Model training for this was done on kaggle notebook as I couldnt train them locally due to memory constraints.
 4. Couldnt complete the serving part as the model training came up to 9GB.
+5. Link to notebook : https://www.kaggle.com/code/vardhan13/notebookb2cd139c81
 
 ### TODO 
 
